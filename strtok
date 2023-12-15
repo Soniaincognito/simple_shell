@@ -1,0 +1,159 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <string.h>
+
+#define MAX_ARGS 64
+#define BUFFER_SIZE 1024
+
+/**
+ * Function Declarations
+ */
+char **tokenize_line(char *line);
+void execute_command(char **args);
+
+/**
+ * Main function
+ */
+int main(void)
+{
+    char *line;
+
+    while (1)
+    {
+        printf("$ ");
+        size_t len = 0;
+        getline(&line, &len, stdin);
+
+        if (!line || *line == '\n')
+        {
+            // Handle error or empty line
+            continue;
+        }
+
+        // Tokenize the line into arguments
+        char **args = tokenize_line(line);
+
+        // Execute the command with arguments
+        if (args[0] != NULL)
+        {
+            execute_command(args);
+        }
+
+        // Free allocated memory
+        free(line);
+        for (size_t i = 0; args[i] != NULL; i++)
+        {
+            free(args[i]);
+        }
+        free(args);
+    }
+
+    return 0;
+}
+
+/**
+ * Tokenize the command line into arguments.
+ */
+char **tokenize_line(char *line)
+{
+    char **args = malloc(MAX_ARGS * sizeof(char *));
+    if (!args)
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    size_t i = 0;
+    size_t arg_size = 16;
+    args[i] = malloc(arg_size);
+
+    if (!args[i])
+    {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    size_t line_len = strlen(line);
+    size_t token_start = 0;
+
+    for (size_t j = 0; j <= line_len; j++)
+    {
+        if (line[j] == ' ' || line[j] == '\t' || line[j] == '\n' || line[j] == '\0')
+        {
+            size_t token_len = j - token_start;
+
+            if (token_len > 0)
+            {
+                if (i >= MAX_ARGS - 1)
+                {
+                    fprintf(stderr, "Too many arguments\n");
+                    break;
+                }
+
+                if (token_len >= arg_size)
+                {
+                    arg_size = token_len + 1;
+                    args[i] = realloc(args[i], arg_size);
+
+                    if (!args[i])
+                    {
+                        perror("realloc");
+                        exit(EXIT_FAILURE);
+                    }
+                }
+
+                strncpy(args[i], line + token_start, token_len);
+                args[i][token_len] = '\0';
+                i++;
+
+                args[i] = malloc(arg_size);
+
+                if (!args[i])
+                {
+                    perror("malloc");
+                    exit(EXIT_FAILURE);
+                }
+            }
+
+            token_start = j + 1;
+        }
+    }
+
+    args[i] = NULL;
+    return args;
+}
+
+/**
+ * Execute a command with arguments.
+ */
+void execute_command(char **args)
+{
+    pid_t pid;
+    int status;
+
+    pid = fork();
+    if (pid == -1)
+    {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid == 0)
+    {
+        // Child process
+        if (execvp(args[0], args) == -1)
+        {
+            perror("execvp");
+            exit(EXIT_FAILURE);
+        }
+    }
+    else
+    {
+        // Parent process
+        waitpid(pid, &status, 0);
+    }
+}
+
