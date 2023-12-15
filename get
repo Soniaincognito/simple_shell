@@ -1,0 +1,105 @@
+#include "shell.h"
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#define BUFFER_SIZE 1024
+
+/**
+ * custom_getline - Read a line of input from standard input.
+ *
+ * Return: The entered line or NULL on error or end-of-file.
+ */
+char *custom_getline(void);
+
+/**
+ * main - Entry point for the simple shell program.
+ *
+ * Return: Always 0 on success.
+ */
+int main(void)
+{
+    char *line;
+
+    while (1)
+    {
+        printf("$ ");
+        line = custom_getline();
+
+        if (line == NULL)
+        {
+            // Handle error or end-of-file condition
+            break;
+        }
+
+        // Process the entered command (replace this with your command processing logic)
+        printf("Entered command: %s\n", line);
+
+        free(line);
+    }
+
+    return 0;
+}
+
+char *custom_getline(void)
+{
+    static char buffer[BUFFER_SIZE];
+    static ssize_t buffer_pos = 0;
+    static ssize_t bytes_read = 0;
+
+    char *line = NULL;
+    size_t line_size = 0;
+
+    ssize_t i = buffer_pos;
+
+    while (1)
+    {
+        // If there are no bytes left in the buffer, read more
+        if (buffer_pos >= bytes_read)
+        {
+            bytes_read = read(STDIN_FILENO, buffer, BUFFER_SIZE);
+
+            if (bytes_read <= 0)
+            {
+                // End-of-file or error condition
+                return NULL;
+            }
+
+            buffer_pos = 0;
+        }
+
+        // Find the end of the line or end of buffer
+        while (i < bytes_read && buffer[i] != '\n')
+        {
+            i++;
+        }
+
+        // Calculate the length of the line
+        size_t line_length = i - buffer_pos;
+
+        // Allocate memory for the line
+        line = realloc(line, line_size + line_length + 1);
+
+        if (line == NULL)
+        {
+            perror("realloc");
+            exit(EXIT_FAILURE);
+        }
+
+        // Copy the line from the buffer to the allocated memory
+        memcpy(line + line_size, buffer + buffer_pos, line_length);
+        line_size += line_length;
+
+        // If we reached the end of the line or end of buffer, return the line
+        if (i < bytes_read || buffer[i - 1] == '\n')
+        {
+            buffer_pos = i + 1;  // Move buffer_pos to the next position after '\n'
+            line[line_size] = '\0';  // Null-terminate the line
+            return line;
+        }
+
+        // Move to the next position in the buffer
+        buffer_pos = i;
+    }
+}
+
