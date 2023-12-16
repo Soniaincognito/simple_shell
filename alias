@@ -1,0 +1,188 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_ALIAS_SIZE 1024
+#define MAX_TOKENS 64
+
+// Structure to store aliases
+struct Alias {
+    char *name;
+    char *value;
+    struct Alias *next;
+};
+
+// Global linked list to store aliases
+struct Alias *alias_list = NULL;
+
+/**
+ * print_aliases - Print the list of aliases
+ * @name: Name of the alias to print, or NULL to print all aliases
+ */
+void print_aliases(const char *name) {
+    struct Alias *current = alias_list;
+
+    while (current != NULL) {
+        if (name == NULL || strcmp(current->name, name) == 0) {
+            printf("%s='%s'\n", current->name, current->value);
+            if (name != NULL) {
+                break;
+            }
+        }
+        current = current->next;
+    }
+}
+
+/**
+ * add_alias - Add or update an alias in the linked list
+ * @name: Name of the alias
+ * @value: Value of the alias
+ *
+ * Return: 0 on success, -1 on failure
+ */
+int add_alias(const char *name, const char *value) {
+    struct Alias *current = alias_list;
+    struct Alias *prev = NULL;
+
+    // Search for an existing alias with the same name
+    while (current != NULL) {
+        if (strcmp(current->name, name) == 0) {
+            // Update the value of an existing alias
+            free(current->value);
+            current->value = strdup(value);
+            if (current->value == NULL) {
+                perror("add_alias");
+                return -1;
+            }
+            return 0;
+        }
+        prev = current;
+        current = current->next;
+    }
+
+    // Create a new alias
+    struct Alias *new_alias = malloc(sizeof(struct Alias));
+    if (new_alias == NULL) {
+        perror("add_alias");
+        return -1;
+    }
+
+    new_alias->name = strdup(name);
+    new_alias->value = strdup(value);
+
+    if (new_alias->name == NULL || new_alias->value == NULL) {
+        perror("add_alias");
+        free(new_alias->name);
+        free(new_alias->value);
+        free(new_alias);
+        return -1;
+    }
+
+    new_alias->next = NULL;
+
+    // Add the new alias to the linked list
+    if (prev == NULL) {
+        alias_list = new_alias;
+    } else {
+        prev->next = new_alias;
+    }
+
+    return 0;
+}
+
+/**
+ * alias_builtin - Execute the alias builtin command
+ * @args: Arguments passed to the alias command
+ *
+ * Return: 0 on success, -1 on failure
+ */
+int alias_builtin(char **args) {
+    int i = 1;
+
+    if (args[1] == NULL) {
+        // Print all aliases if no arguments are provided
+        print_aliases(NULL);
+        return 0;
+    }
+
+    while (args[i] != NULL) {
+        char *name = strtok(args[i], "=");
+        char *value = strtok(NULL, "=");
+
+        if (name != NULL && value != NULL) {
+            // Define or update an alias
+            if (add_alias(name, value) == -1) {
+                return -1;
+            }
+        } else {
+            // Print the value of the specified aliases
+            print_aliases(args[i]);
+        }
+
+        i++;
+    }
+
+    return 0;
+}
+
+/**
+ * free_aliases - Free the memory used by the linked list of aliases
+ */
+void free_aliases() {
+    struct Alias *current = alias_list;
+    struct Alias *next;
+
+    while (current != NULL) {
+        next = current->next;
+        free(current->name);
+        free(current->value);
+        free(current);
+        current = next;
+    }
+}
+
+int main(void) {
+    char input[MAX_ALIAS_SIZE];
+    char *args[MAX_TOKENS];
+    int i;
+
+    while (1) {
+        // Print prompt
+        printf("alex@~$ ");
+
+        // Read input
+        if (fgets(input, MAX_ALIAS_SIZE, stdin) == NULL) {
+            perror("fgets");
+            continue;
+        }
+
+        // Tokenize input into arguments
+        args[0] = strtok(input, " \t\n");
+        if (args[0] == NULL) {
+            continue;  // Empty input
+        }
+
+        for (i = 1; i < MAX_TOKENS - 1; i++) {
+            args[i] = strtok(NULL, " \t\n");
+            if (args[i] == NULL) {
+                break;
+            }
+        }
+        args[i] = NULL;
+
+        // Execute alias command
+        if (strcmp(args[0], "alias") == 0) {
+            if (alias_builtin(args) == -1) {
+                fprintf(stderr, "Error executing alias command\n");
+            }
+        }
+
+        // Additional logic for other commands can be added here
+
+        // Free memory used by aliases
+        free_aliases();
+    }
+
+    return 0;
+}
+
