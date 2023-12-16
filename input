@@ -1,0 +1,234 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+#define MAX_INPUT_SIZE 1024
+#define MAX_ARGS 64
+
+// Structure to store variables
+struct Variable {
+    char *name;
+    char *value;
+    struct Variable *next;
+};
+
+// Global linked list to store variables
+struct Variable *variable_list = NULL;
+
+/**
+ * add_variable - Add or update a variable in the linked list
+ * @name: Name of the variable
+ * @value: Value of the variable
+ *
+ * Return: 0 on success, -1 on failure
+ */
+int add_variable(const char *name, const char *value) {
+    struct Variable *current = variable_list;
+    struct Variable *prev = NULL;
+
+    // Search for an existing variable with the same name
+    while (current != NULL) {
+        if (strcmp(current->name, name) == 0) {
+            // Update the value of an existing variable
+            free(current->value);
+            current->value = strdup(value);
+            if (current->value == NULL) {
+                perror("add_variable");
+                return -1;
+            }
+            return 0;
+        }
+        prev = current;
+        current = current->next;
+    }
+
+    // Create a new variable
+    struct Variable *new_variable = malloc(sizeof(struct Variable));
+    if (new_variable == NULL) {
+        perror("add_variable");
+        return -1;
+    }
+
+    new_variable->name = strdup(name);
+    new_variable->value = strdup(value);
+
+    if (new_variable->name == NULL || new_variable->value == NULL) {
+        perror("add_variable");
+        free(new_variable->name);
+        free(new_variable->value);
+        free(new_variable);
+        return -1;
+    }
+
+    new_variable->next = NULL;
+
+    // Add the new variable to the linked list
+    if (prev == NULL) {
+        variable_list = new_variable;
+    } else {
+        prev->next = new_variable;
+    }
+
+    return 0;
+}
+
+/**
+ * replace_variables - Replace variables in a string with their values
+ * @input: The input string containing variables
+ *
+ * Return: A new string with variables replaced, or NULL on failure
+ */
+char *replace_variables(char *input) {
+    char *output = strdup(input);
+    char *token, *name, *value, *temp;
+    struct Variable *current = variable_list;
+
+    if (output == NULL) {
+        perror("replace_variables");
+        return NULL;
+    }
+
+    // Tokenize the input into words
+    token = strtok(output, " \t\n");
+    while (token != NULL) {
+        // Check for variable replacement
+        if (token[0] == '$' && token[1] != '\0') {
+            name = token + 1; // Skip the '$'
+            
+            if (strcmp(name, "?") == 0) {
+                // Replace $? with the exit status
+                temp = malloc(MAX_INPUT_SIZE);
+                if (temp == NULL) {
+                    perror("replace_variables");
+                    free(output);
+                    return NULL;
+                }
+
+                sprintf(temp, "%d", WEXITSTATUS(getpid()));
+                value = temp;
+            } else if (strcmp(name, "$$") == 0) {
+                // Replace $$ with the process ID
+                temp = malloc(MAX_INPUT_SIZE);
+                if (temp == NULL) {
+                    perror("replace_variables");
+                    free(output);
+                    return NULL;
+                }
+
+                sprintf(temp, "%d", getpid());
+                value = temp;
+            } else {
+                // Replace other variables
+                while (current != NULL) {
+                    if (strcmp(current->name, name) == 0) {
+                        value = current->value;
+                        break;
+                    }
+                    current = current->next;
+                }
+
+                if (current == NULL) {
+                    // Variable not found, leave it unchanged
+                    value = name;
+                }
+            }
+
+            // Replace the token with the variable value
+            strcpy(token, value);
+            free(temp);
+        }
+
+        token = strtok(NULL, " \t\n");
+    }
+
+    return output;
+}
+
+/**
+ * execute_command - Execute a single command
+ * @command: The command to be executed
+ *
+ * Return: 0 on success, -1 on failure
+ */
+int execute_command(char *command) {
+    char *args[MAX_ARGS];
+    char *token;
+    int status;
+    pid_t pid;
+
+    // Replace variables in the command
+    char *command_with_vars = replace_variables(command);
+    if (command_with_vars == NULL) {
+        return -1;
+    }
+
+    // Tokenize the command into arguments
+    token = strtok(command_with_vars, " \t\n");
+    if (token == NULL) {
+        free(command_with_vars);
+        return 0;  // Empty command
+    }
+
+    args[0] = token;
+    int i = 1;
+    while ((token = strtok(NULL, " \t\n")) != NULL && i < MAX_ARGS - 1) {
+        args[i] = token;
+        i++;
+    }
+    args[i] = NULL;
+
+    // Fork a child process to execute the command
+    pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        free(command_with_vars);
+        return -1;
+    } else if (pid == 0) {
+        // Child process
+        if (execvp(args[0], args) == -1) {
+            perror("execvp");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        // Parent process
+        waitpid(pid, &status, 0);
+        if (WIFEXITED(status)) {
+            free(command_with_vars);
+            return WEXITSTATUS(status);
+        } else {
+            fprintf(stderr, "Child process terminated abnormally\n");
+            free(command_with_vars);
+            return -1;
+        }
+    }
+}
+
+/**
+ * free_variables - Free the memory used by the linked list of variables
+ */
+void free_variables() {
+    struct Variable *current = variable_list;
+    struct Variable *next;
+
+    while (current != NULL) {
+        next = current->next;
+        free(current->name);
+        free(current->value);
+        free(current);
+        current = next;
+    }
+}
+
+int main(int argc, char *argv[]) {
+    FILE *file;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read;
+
+    // If a filename is provided as a command line argument
+    if (argc == 2) {
+        // Open the file
+        file = fopen(argv[1
+
