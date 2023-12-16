@@ -1,0 +1,73 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+
+/**
+ * cd_custom - Change the current directory of the process
+ * @path: The directory to change to. If NULL, change to $HOME.
+ *
+ * Return: 0 on success, -1 on failure
+ */
+int cd_custom(const char *path) {
+    char *new_path;
+
+    if (path == NULL) {
+        // If no argument is given, change to $HOME
+        new_path = getenv("HOME");
+        if (new_path == NULL) {
+            fprintf(stderr, "cd: $HOME not set\n");
+            return -1;
+        }
+    } else if (strcmp(path, "-") == 0) {
+        // If the argument is "-", change to the previous directory
+        new_path = getenv("OLDPWD");
+        if (new_path == NULL) {
+            fprintf(stderr, "cd: OLDPWD not set\n");
+            return -1;
+        }
+    } else {
+        // Change to the specified directory
+        new_path = (char *)path;
+    }
+
+    // Save the current working directory for OLDPWD
+    char *current_path = getcwd(NULL, 0);
+    if (current_path == NULL) {
+        perror("cd");
+        return -1;
+    }
+
+    // Change the directory
+    if (chdir(new_path) != 0) {
+        perror("cd");
+        free(current_path);
+        return -1;
+    }
+
+    // Update the environment variable PWD
+    if (setenv("PWD", getcwd(NULL, 0), 1) != 0) {
+        perror("cd");
+        free(current_path);
+        return -1;
+    }
+
+    // Update the environment variable OLDPWD
+    if (setenv("OLDPWD", current_path, 1) != 0) {
+        perror("cd");
+        free(current_path);
+        return -1;
+    }
+
+    free(current_path);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    if (argc > 2) {
+        fprintf(stderr, "Usage: %s [DIRECTORY]\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    if (cd_custom((argc == 2) ? argv[1] 
+
